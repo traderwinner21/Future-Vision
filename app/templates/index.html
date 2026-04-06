@@ -1,0 +1,92 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Futures Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background: #0d1117; color: #e6edf3; }
+    .grid { display: grid; grid-template-columns: repeat(5, minmax(180px, 1fr)); gap: 16px; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 14px; padding: 16px; }
+    h1, h2 { margin: 0 0 12px 0; }
+    .muted { color: #8b949e; font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 10px; border-bottom: 1px solid #30363d; font-size: 14px; }
+    .section { margin-top: 18px; }
+    canvas { background: #161b22; border-radius: 14px; padding: 10px; }
+    @media (max-width: 980px) { .grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <h1>MES / MNQ / MGC AI Trading Dashboard</h1>
+  <div class="muted">SQL-backed journal and TradersPost signal log</div>
+
+  <div class="grid section" id="cards"></div>
+
+  <div class="section card">
+    <h2>Daily Equity Curve</h2>
+    <canvas id="equityChart" height="100"></canvas>
+  </div>
+
+  <div class="section card">
+    <h2>Open Positions</h2>
+    <table id="openTable"><thead><tr><th>Symbol</th><th>Side</th><th>Qty</th><th>Entry</th><th>Stop</th><th>Target</th><th>Score</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="section card">
+    <h2>Recent Closed Trades</h2>
+    <table id="closedTable"><thead><tr><th>Symbol</th><th>Side</th><th>Entry</th><th>Exit</th><th>P/L $</th><th>Reason</th><th>Exited</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="section card">
+    <h2>Recent Signals</h2>
+    <table id="signalTable"><thead><tr><th>Time</th><th>Symbol</th><th>Action</th><th>Score</th><th>Accepted</th><th>Reason</th></tr></thead><tbody></tbody></table>
+  </div>
+
+<script>
+let chart;
+async function load() {
+  const res = await fetch('/api/dashboard');
+  const data = await res.json();
+
+  const s = data.summary;
+  const cards = [
+    ['Today P/L', `$${s.equity_today.toFixed(2)}`],
+    ['Trades Today', s.trades_today],
+    ['Wins Today', s.wins_today],
+    ['Losses Today', s.losses_today],
+    ['Open Positions', s.open_positions],
+    ['Avg Score', s.avg_score],
+    ['Last Signal', s.last_signal_at || '-']
+  ];
+  document.getElementById('cards').innerHTML = cards.map(([k,v]) => `<div class="card"><div class="muted">${k}</div><div style="font-size:28px;margin-top:8px">${v}</div></div>`).join('');
+
+  document.querySelector('#openTable tbody').innerHTML = data.open_positions.map(p =>
+    `<tr><td>${p.symbol}</td><td>${p.side}</td><td>${p.qty}</td><td>${p.entry_price}</td><td>${p.stop_price}</td><td>${p.target_price}</td><td>${(p.model_score ?? 0).toFixed(4)}</td></tr>`
+  ).join('');
+
+  document.querySelector('#closedTable tbody').innerHTML = data.closed_positions.map(p =>
+    `<tr><td>${p.symbol}</td><td>${p.side}</td><td>${p.entry_price}</td><td>${p.exit_price ?? ''}</td><td>${p.pnl_dollars ?? ''}</td><td>${p.close_reason ?? ''}</td><td>${p.exit_time ?? ''}</td></tr>`
+  ).join('');
+
+  document.querySelector('#signalTable tbody').innerHTML = data.signals.map(s =>
+    `<tr><td>${s.created_at}</td><td>${s.symbol}</td><td>${s.action}</td><td>${(s.score ?? 0).toFixed(4)}</td><td>${s.accepted}</td><td>${s.reason ?? ''}</td></tr>`
+  ).join('');
+
+  const labels = data.equity_curve.map(x => x.time);
+  const values = data.equity_curve.map(x => x.equity);
+  const ctx = document.getElementById('equityChart').getContext('2d');
+  if (chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets: [{ label: 'Equity', data: values, borderColor: '#58a6ff' }] },
+    options: { responsive: true, plugins: { legend: { labels: { color: '#e6edf3' } } }, scales: { x: { ticks: { color: '#8b949e' } }, y: { ticks: { color: '#8b949e' } } } }
+  });
+}
+load();
+setInterval(load, 15000);
+</script>
+</body>
+</html>
